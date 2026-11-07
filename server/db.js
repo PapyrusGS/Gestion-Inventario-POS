@@ -3,19 +3,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+let db = null;
+
+try {
+  if (!process.env.NETLIFY) {
+    const DATA_DIR = path.resolve(process.cwd(), 'data');
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+
+    const DB_PATH = path.join(DATA_DIR, 'inventario.sqlite');
+    db = new DatabaseSync(DB_PATH);
+
+    // Enable WAL mode & foreign keys for performance and data integrity
+    db.exec('PRAGMA journal_mode = WAL;');
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
+} catch (e) {
+  console.warn('[DB] SQLite no disponible en este entorno, operando en modo Cloud/Supabase:', e.message);
 }
 
-const DB_PATH = path.join(DATA_DIR, 'inventario.sqlite');
-export const db = new DatabaseSync(DB_PATH);
-
-// Enable WAL mode & foreign keys for performance and data integrity
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
+export { db };
 
 export function initDatabase() {
+  if (!db) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS branches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

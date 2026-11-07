@@ -7,10 +7,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node dependencies
 node_modules
 dist
 dist-ssr
 *.local
+
+# Environment variables (¡NUNCA subir a GitHub!)
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases & temp data
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Netlify local dev
+.netlify/
+
+# Unnecessary & Temporary folders
+_archivos_para_borrar/
 
 # Editor directories and files
 .vscode/*
