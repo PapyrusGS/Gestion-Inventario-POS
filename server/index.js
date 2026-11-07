@@ -6,6 +6,7 @@ import { db, initDatabase } from './db.js';
 import { authenticateToken, requireRole, generateToken, logAudit } from './auth.js';
 import {
   supabaseAdmin,
+  getSupabaseUser,
   getSupabaseProducts,
   createSupabaseProduct,
   updateSupabaseProduct,
@@ -38,8 +39,8 @@ app.use((req, res, next) => {
 // 1. AUTHENTICATION & SECURITY
 // ==========================================
 
-// Login
-app.post('/api/auth/login', (req, res) => {
+// Login (Autenticación protegida en Base de Datos)
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -52,8 +53,22 @@ app.post('/api/auth/login', (req, res) => {
     let user = null;
     let passwordValid = false;
 
-    // Verificar si es el usuario Administrador
-    if (trimmedUser.toLowerCase() === 'admin') {
+    // 1. Intentar validar primero contra la base de datos Supabase
+    const sbUser = await getSupabaseUser(trimmedUser);
+    if (sbUser) {
+      if (bcrypt.compareSync(password, sbUser.password_hash)) {
+        user = {
+          id: sbUser.id,
+          username: sbUser.username,
+          full_name: sbUser.full_name,
+          role: sbUser.role,
+          branch_id: null,
+          branch_name: 'Todas las Sucursales'
+        };
+        passwordValid = true;
+      }
+    } else if (trimmedUser.toLowerCase() === 'admin') {
+      // 2. Fallback de inicio de sesión administrativo si users aún no existe en Supabase
       user = {
         id: 1,
         username: 'admin',
@@ -62,14 +77,13 @@ app.post('/api/auth/login', (req, res) => {
         branch_id: null,
         branch_name: 'Todas las Sucursales'
       };
-      // Acepta password configurada en env o hash de SQLite si existe
-      if (password === adminPassword) {
-        passwordValid = true;
-      } else if (db) {
+      if (db) {
         const dbUser = db.prepare('SELECT password_hash FROM users WHERE username = ?').get('admin');
         if (dbUser && bcrypt.compareSync(password, dbUser.password_hash)) {
           passwordValid = true;
         }
+      } else if (password === adminPassword) {
+        passwordValid = true;
       }
     } else if (db) {
       const dbUser = db.prepare(`

@@ -21,7 +21,38 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==============================================================================
--- 3. TABLA DE PRODUCTOS (PRENDAS, CONFECCIONES Y ARTÍCULOS)
+-- 3. TABLA DE USUARIOS Y AUTENTICACIÓN (ENCRIPTADA CON BCRYPT)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name VARCHAR(150) NOT NULL DEFAULT 'Administración General (Propietarios)',
+    role VARCHAR(20) NOT NULL DEFAULT 'OWNER',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso admin a usuarios" ON public.users;
+CREATE POLICY "Acceso admin a usuarios"
+ON public.users FOR ALL
+USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+
+-- Insertar usuario inicial Administrador con contraseña encriptada (bcrypt)
+-- Contraseña inicial predeterminada: admin123
+INSERT INTO public.users (username, password_hash, full_name, role)
+VALUES (
+    'admin',
+    '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+    'Administración General (Propietarios)',
+    'OWNER'
+)
+ON CONFLICT (username) DO NOTHING;
+
+-- ==============================================================================
+-- 4. TABLA DE PRODUCTOS (PRENDAS, CONFECCIONES Y ARTÍCULOS)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.products (
     id SERIAL PRIMARY KEY,

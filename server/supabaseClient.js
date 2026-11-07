@@ -31,6 +31,26 @@ export async function logSupabaseAudit(req, { action, targetEntity, targetId = n
   }
 }
 
+// 0. USUARIOS (AUTENTICACIÓN EN BASE DE DATOS SUPABASE)
+export async function getSupabaseUser(username) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('username', username.trim())
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) {
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.warn('[Supabase User] Error consultando tabla users:', err.message);
+    return null;
+  }
+}
+
 // 1. PRODUCTOS
 export async function getSupabaseProducts(isOwner = false) {
   const { data, error } = await supabaseAdmin
