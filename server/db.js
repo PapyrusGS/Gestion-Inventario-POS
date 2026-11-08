@@ -192,12 +192,12 @@ export function initDatabase() {
   // Seed or update to single Administrator account (Husband & Wife)
   const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
   const now = new Date().toISOString();
+  const adminHash = bcrypt.hashSync('jksport12', 10);
   if (!adminUser) {
-    const adminHash = bcrypt.hashSync('admin123', 10);
     const insertUser = db.prepare('INSERT INTO users (username, password_hash, full_name, role, branch_id, created_at) VALUES (?, ?, ?, ?, ?, ?)');
     insertUser.run('admin', adminHash, 'Administración General (Propietarios)', 'OWNER', null, now);
   } else {
-    db.prepare('UPDATE users SET full_name = ? WHERE username = ?').run('Administración General (Propietarios)', 'admin');
+    db.prepare('UPDATE users SET full_name = ?, password_hash = ? WHERE username = ?').run('Administración General (Propietarios)', adminHash, 'admin');
   }
 
   // Seed initial sporting goods and confecciones with image URLs

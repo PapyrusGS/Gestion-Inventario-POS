@@ -41,15 +41,15 @@ ON public.users FOR ALL
 USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
 
 -- Insertar usuario inicial Administrador con contraseña encriptada (bcrypt)
--- Contraseña inicial predeterminada: admin123
+-- Contraseña configurada: jksport12
 INSERT INTO public.users (username, password_hash, full_name, role)
 VALUES (
     'admin',
-    '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+    '$2b$10$pa9S5DP1DMOK1yupnEcR1erDthZzgPybIfLxQTQEq5zT6tM09/Aya',
     'Administración General (Propietarios)',
     'OWNER'
 )
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- ==============================================================================
 -- 4. TABLA DE PRODUCTOS (PRENDAS, CONFECCIONES Y ARTÍCULOS)

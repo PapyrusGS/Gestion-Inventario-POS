@@ -48,7 +48,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const trimmedUser = username.trim();
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'jksport12';
 
     let user = null;
     let passwordValid = false;
