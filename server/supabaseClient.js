@@ -1,3 +1,12 @@
+// Cargar variables de entorno locales si existen
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile();
+  }
+} catch (e) {
+  // Ignorado en producción / Netlify donde las variables vienen inyectadas
+}
+
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://uruveaadqbhvwtmnqwds.supabase.co';

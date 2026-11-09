@@ -1,3 +1,12 @@
+// Cargar variables de entorno locales si existen
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile();
+  }
+} catch (e) {
+  // Ignorado en producción / Netlify
+}
+
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
