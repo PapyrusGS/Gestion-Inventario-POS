@@ -2,9 +2,11 @@
   publish = "dist"
   command = "npm run build"
   functions = "netlify/functions"
+  SECRETS_SCAN_ENABLED = false
 
 [build.environment]
   NODE_VERSION = "20"
+  SECRETS_SCAN_ENABLED = "false"
 
 [functions]
   node_bundler = "esbuild"

@@ -1,35 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 let db = null;
-let DatabaseSync = null;
 
 try {
-  const sqliteMod = await import('node:sqlite').catch(() => null);
-  if (sqliteMod) {
-    DatabaseSync = sqliteMod.DatabaseSync;
-  }
-} catch {
-  // Entornos como Netlify o versiones antiguas de Node sin node:sqlite
-}
-
-try {
-  if (!process.env.NETLIFY && DatabaseSync) {
-    const DATA_DIR = path.resolve(process.cwd(), 'data');
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!process.env.NETLIFY) {
+    let sqliteMod = null;
+    try {
+      sqliteMod = require('node:sqlite');
+    } catch {
+      sqliteMod = null;
     }
 
-    const DB_PATH = path.join(DATA_DIR, 'inventario.sqlite');
-    db = new DatabaseSync(DB_PATH);
+    if (sqliteMod && sqliteMod.DatabaseSync) {
+      const DATA_DIR = path.resolve(process.cwd(), 'data');
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
 
-    // Enable WAL mode & foreign keys for performance and data integrity
-    db.exec('PRAGMA journal_mode = WAL;');
-    db.exec('PRAGMA foreign_keys = ON;');
+      const DB_PATH = path.join(DATA_DIR, 'inventario.sqlite');
+      db = new sqliteMod.DatabaseSync(DB_PATH);
+
+      db.exec('PRAGMA journal_mode = WAL;');
+      db.exec('PRAGMA foreign_keys = ON;');
+    }
   }
 } catch (e) {
-  console.warn('[DB] SQLite no disponible en este entorno, operando en modo Cloud/Supabase:', e.message);
+  // SQLite no disponible (Netlify/Serverless o Node < 22), operando en modo Cloud Supabase
 }
 
 export { db };
