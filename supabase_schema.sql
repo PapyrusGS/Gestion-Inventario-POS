@@ -41,7 +41,7 @@ ON public.users FOR ALL
 USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
 
 -- Insertar usuario inicial Administrador con contraseña encriptada (bcrypt)
--- Contraseña configurada: jksport12
+-- Contraseña configurada en variables de entorno
 INSERT INTO public.users (username, password_hash, full_name, role)
 VALUES (
     'admin',

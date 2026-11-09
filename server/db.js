@@ -208,7 +208,8 @@ export function initDatabase() {
   // Seed or update to single Administrator account (Husband & Wife)
   const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
   const now = new Date().toISOString();
-  const adminHash = bcrypt.hashSync('jksport12', 10);
+  const adminPass = process.env.ADMIN_PASSWORD || 'admin';
+  const adminHash = bcrypt.hashSync(adminPass, 10);
   if (!adminUser) {
     const insertUser = db.prepare('INSERT INTO users (username, password_hash, full_name, role, branch_id, created_at) VALUES (?, ?, ?, ?, ?, ?)');
     insertUser.run('admin', adminHash, 'Administración General (Propietarios)', 'OWNER', null, now);
