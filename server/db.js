@@ -3,15 +3,21 @@ import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
-
 let db = null;
 
-try {
-  if (!process.env.NETLIFY) {
+const isServerless = Boolean(
+  process.env.NETLIFY || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME || 
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.VERCEL
+);
+
+if (!isServerless) {
+  try {
+    const customRequire = createRequire(path.resolve(process.cwd(), 'package.json'));
     let sqliteMod = null;
     try {
-      sqliteMod = require('node:sqlite');
+      sqliteMod = customRequire('node:sqlite');
     } catch {
       sqliteMod = null;
     }
@@ -28,9 +34,9 @@ try {
       db.exec('PRAGMA journal_mode = WAL;');
       db.exec('PRAGMA foreign_keys = ON;');
     }
+  } catch (e) {
+    // SQLite no disponible en este entorno
   }
-} catch (e) {
-  // SQLite no disponible (Netlify/Serverless o Node < 22), operando en modo Cloud Supabase
 }
 
 export { db };

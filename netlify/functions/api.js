@@ -4,6 +4,9 @@ import app from '../../server/index.js';
 const serverlessHandler = serverless(app);
 
 export const handler = async (event, context) => {
+  if (context) {
+    context.callbackWaitsForEmptyEventLoop = false;
+  }
   try {
     return await serverlessHandler(event, context);
   } catch (error) {

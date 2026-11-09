@@ -601,7 +601,14 @@ app.get('/api/dashboard/stats', authenticateToken, requireRole(['OWNER']), async
 });
 
 // Export app for Netlify Serverless Functions or start standalone
-if (!process.env.NETLIFY && process.env.NODE_ENV !== 'test') {
+const isServerless = Boolean(
+  process.env.NETLIFY || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME || 
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.VERCEL
+);
+
+if (!isServerless && process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`[API] Servidor de Inventario & Ventas corriendo en http://localhost:${PORT}`);
   });
