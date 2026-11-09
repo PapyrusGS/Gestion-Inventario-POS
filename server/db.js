@@ -1,12 +1,21 @@
-import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 
 let db = null;
+let DatabaseSync = null;
 
 try {
-  if (!process.env.NETLIFY) {
+  const sqliteMod = await import('node:sqlite').catch(() => null);
+  if (sqliteMod) {
+    DatabaseSync = sqliteMod.DatabaseSync;
+  }
+} catch {
+  // Entornos como Netlify o versiones antiguas de Node sin node:sqlite
+}
+
+try {
+  if (!process.env.NETLIFY && DatabaseSync) {
     const DATA_DIR = path.resolve(process.cwd(), 'data');
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
