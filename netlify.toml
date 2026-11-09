@@ -17,6 +17,7 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+  force = true
 
 # Redirección SPA para que cualquier ruta de React cargue index.html
 [[redirects]]

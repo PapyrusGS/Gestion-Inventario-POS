@@ -64,28 +64,30 @@ export function logAudit(req, { action, targetEntity, targetId = null, oldValues
     const ipAddress = req?.ip || req?.headers?.['x-forwarded-for'] || req?.socket?.remoteAddress || '127.0.0.1';
     const userAgent = req?.headers?.['user-agent'] || 'DESCONOCIDO';
 
-    const stmt = db.prepare(`
-      INSERT INTO audit_logs (
-        timestamp, user_id, username, role, branch_id, action, target_entity, target_id,
-        old_values, new_values, reason, ip_address, user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    if (db) {
+      const stmt = db.prepare(`
+        INSERT INTO audit_logs (
+          timestamp, user_id, username, role, branch_id, action, target_entity, target_id,
+          old_values, new_values, reason, ip_address, user_agent
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      timestamp,
-      userId,
-      username,
-      role,
-      branchId,
-      action,
-      targetEntity,
-      targetId ? String(targetId) : null,
-      oldValues ? (typeof oldValues === 'string' ? oldValues : JSON.stringify(oldValues)) : null,
-      newValues ? (typeof newValues === 'string' ? newValues : JSON.stringify(newValues)) : null,
-      reason,
-      ipAddress,
-      userAgent
-    );
+      stmt.run(
+        timestamp,
+        userId,
+        username,
+        role,
+        branchId,
+        action,
+        targetEntity,
+        targetId ? String(targetId) : null,
+        oldValues ? (typeof oldValues === 'string' ? oldValues : JSON.stringify(oldValues)) : null,
+        newValues ? (typeof newValues === 'string' ? newValues : JSON.stringify(newValues)) : null,
+        reason,
+        ipAddress,
+        userAgent
+      );
+    }
   } catch (err) {
     console.error('Error al registrar auditoría:', err);
   }
