@@ -81,7 +81,8 @@ export async function executeSale({ items, paymentMethod, customerName = '', cus
       saleNumber,
       items: items.map(it => ({
         productId: it.productId,
-        name: it.name,
+        name: it.name || it.productName || 'Artículo',
+        productName: it.name || it.productName || 'Artículo',
         price: it.price,
         quantity: it.quantity,
         subtotal: it.price * it.quantity
@@ -92,6 +93,7 @@ export async function executeSale({ items, paymentMethod, customerName = '', cus
       paymentMethod, // 'efectivo', 'transferencia', 'fiado'
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
+      sellerName: customerPhone.trim() || 'admin',
       cashReceived: paymentMethod === 'efectivo' ? (cashReceived || total) : total,
       changeGiven: paymentMethod === 'efectivo' ? Math.max(0, (cashReceived || total) - total) : 0,
       status: 'completada',

@@ -3,7 +3,7 @@ import { Lock, User, ShieldCheck, KeyRound, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 export function LoginModal({ onLoginSuccess }) {
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -63,12 +63,9 @@ export function LoginModal({ onLoginSuccess }) {
           }}>
             <ShieldCheck size={36} />
           </div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 0.25rem 0' }}>
-            Panel de Administración
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, letterSpacing: '0.05em' }}>
+            LOGIN
           </h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
-            Acceso Propietarios (Esposo & Esposa)
-          </p>
         </div>
 
         {/* Formulario */}
@@ -93,12 +90,13 @@ export function LoginModal({ onLoginSuccess }) {
 
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem' }}>
-              Usuario Administrador
+              Usuario
             </label>
             <div style={{ position: 'relative' }}>
               <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
                 type="text"
+                placeholder="Usuario"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -123,6 +121,7 @@ export function LoginModal({ onLoginSuccess }) {
               <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
                 type="password"
+                placeholder="Contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -162,10 +161,6 @@ export function LoginModal({ onLoginSuccess }) {
             <KeyRound size={18} />
             {isLoading ? 'Ingresando...' : 'Entrar al Sistema'}
           </button>
-
-          <div style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
-            Cuenta compartida para la administración del negocio deportivo.
-          </div>
         </form>
       </div>
     </div>

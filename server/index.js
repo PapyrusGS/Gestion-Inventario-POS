@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { db, initDatabase } from './db.js';
 import { authenticateToken, requireRole, generateToken, logAudit } from './auth.js';
+import { getBoliviaDate, getBoliviaMonth } from './dateUtils.js';
 import {
   supabaseAdmin,
   getSupabaseUser,
@@ -120,6 +121,13 @@ app.post('/api/auth/login', async (req, res) => {
         targetId: username,
         reason: 'Credenciales inválidas'
       });
+      await logSupabaseAudit(req, {
+        action: 'LOGIN_FALLIDO',
+        targetEntity: 'users',
+        targetId: username,
+        reason: 'Credenciales inválidas',
+        user: { username }
+      });
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
 
@@ -131,6 +139,13 @@ app.post('/api/auth/login', async (req, res) => {
       targetEntity: 'users',
       targetId: String(user.id),
       reason: `Ingreso al sistema con rol: ${user.role}`
+    });
+    await logSupabaseAudit(req, {
+      action: 'LOGIN_EXITOSO',
+      targetEntity: 'users',
+      targetId: String(user.id),
+      reason: `Ingreso al sistema con rol: ${user.role}`,
+      user
     });
 
     res.json({
@@ -551,16 +566,23 @@ app.post('/api/sync', authenticateToken, async (req, res) => {
 
 app.get('/api/dashboard/stats', authenticateToken, requireRole(['OWNER']), async (req, res) => {
   try {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const monthStr = new Date().toISOString().slice(0, 7);
+    const todayStr = getBoliviaDate();
+    const monthStr = getBoliviaMonth();
 
     const { data: allSales = [] } = await supabaseAdmin
       .from('sales')
       .select('*')
       .eq('status', 'COMPLETED');
 
-    const todaySalesList = (allSales || []).filter(s => s.created_at && s.created_at.startsWith(todayStr));
-    const monthSalesList = (allSales || []).filter(s => s.created_at && s.created_at.startsWith(monthStr));
+    const todaySalesList = (allSales || []).filter(s => {
+      if (!s.created_at) return false;
+      return getBoliviaDate(s.created_at) === todayStr;
+    });
+
+    const monthSalesList = (allSales || []).filter(s => {
+      if (!s.created_at) return false;
+      return getBoliviaDate(s.created_at).startsWith(monthStr);
+    });
 
     const todaySales = todaySalesList.reduce((acc, s) => acc + Number(s.total || 0), 0);
     const todayCost = todaySalesList.reduce((acc, s) => acc + Number(s.total_cost || 0), 0);

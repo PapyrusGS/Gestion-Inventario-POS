@@ -29,8 +29,8 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
   const [editingId, setEditingId] = useState(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Confecciones & Ropa');
-  const [sport, setSport] = useState('Fútbol');
-  const [size, setSize] = useState('M');
+  const [sport, setSport] = useState('General');
+  const [size, setSize] = useState('');
   const [color, setColor] = useState('');
   const [salePrice, setSalePrice] = useState('');
   const [costPrice, setCostPrice] = useState('');
@@ -38,6 +38,7 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
   const [minStock, setMinStock] = useState('5');
   const [imageUrl, setImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [formError, setFormError] = useState('');
 
   const handleFileUpload = async (e) => {
@@ -59,6 +60,7 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
   const [adjustNewStock, setAdjustNewStock] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustError, setAdjustError] = useState('');
+  const [isAdjustingStock, setIsAdjustingStock] = useState(false);
 
   const loadProducts = async () => {
     try {
@@ -98,8 +100,8 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
     setEditingId(null);
     setName('');
     setCategory('Confecciones & Ropa');
-    setSport('Fútbol');
-    setSize('M');
+    setSport('General');
+    setSize('');
     setColor('');
     setSalePrice('');
     setCostPrice('');
@@ -107,6 +109,7 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
     setMinStock('5');
     setImageUrl('');
     setFormError('');
+    setIsSavingProduct(false);
     setIsProductModalOpen(true);
   };
 
@@ -114,8 +117,8 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
     setEditingId(p.id);
     setName(p.name || '');
     setCategory(p.category || 'Confecciones & Ropa');
-    setSport(p.sport || 'Fútbol');
-    setSize(p.size || 'M');
+    setSport(p.sport || 'General');
+    setSize(p.size && p.size !== 'Estándar' ? p.size : '');
     setColor(p.color || '');
     setSalePrice(String(p.salePrice || ''));
     setCostPrice(String(p.costPrice || ''));
@@ -123,11 +126,13 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
     setMinStock(String(p.minStock || 5));
     setImageUrl(p.imageUrl || '');
     setFormError('');
+    setIsSavingProduct(false);
     setIsProductModalOpen(true);
   };
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
+    if (isSavingProduct) return; // Bloquear envíos simultáneos / spam clicks
     setFormError('');
 
     if (!name.trim()) {
@@ -145,14 +150,15 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
     const stockNum = Number(stock || 0);
     const minStockNum = Number(minStock || 5);
 
+    setIsSavingProduct(true);
     try {
       await api.saveProduct({
         id: editingId || undefined,
         name: name.trim(),
         category,
-        sport,
-        size,
-        color,
+        sport: 'General',
+        size: size.trim(),
+        color: color.trim(),
         costPrice: costPriceNum,
         salePrice: salePriceNum,
         stock: stockNum,
@@ -165,11 +171,14 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
       if (onInventoryChange) onInventoryChange();
     } catch (err) {
       setFormError(err.message || 'Error al guardar el producto.');
+    } finally {
+      setIsSavingProduct(false);
     }
   };
 
   const handleAdjustStock = async (e) => {
     e.preventDefault();
+    if (isAdjustingStock) return; // Bloquear spam clicks
     setAdjustError('');
 
     if (!selectedProduct) return;
@@ -184,6 +193,7 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
       return;
     }
 
+    setIsAdjustingStock(true);
     try {
       await api.adjustStock(selectedProduct.id, 1, newStk, adjustReason);
       setIsAdjustModalOpen(false);
@@ -194,6 +204,8 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
       if (onInventoryChange) onInventoryChange();
     } catch (err) {
       setAdjustError(err.message || 'Error al ajustar inventario.');
+    } finally {
+      setIsAdjustingStock(false);
     }
   };
 
@@ -333,9 +345,9 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
 
                         <div>
                           <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.92rem' }}>{p.name}</div>
-                          {p.sport && (
+                          {p.color && (
                             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              {p.sport} {p.color ? `· ${p.color}` : ''}
+                              Color: {p.color}
                             </div>
                           )}
                         </div>
@@ -343,22 +355,22 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                     </td>
 
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.84rem', color: '#475569' }}>
-                      <div>{p.category}</div>
-                      {p.size && (
-                        <span style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                      <div style={{ fontWeight: 600 }}>{p.category}</div>
+                      {p.size && p.size.trim() !== '' && p.size !== 'Estándar' && (
+                        <span style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700, marginTop: '2px', display: 'inline-block' }}>
                           Talla: {p.size}
                         </span>
                       )}
                     </td>
 
                     <td style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '1rem', color: '#059669', fontFamily: 'var(--font-display)' }}>
-                      {currency}{Number(p.salePrice).toFixed(2)}
+                      {currency}{Math.round(p.salePrice)}
                     </td>
 
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.88rem', color: '#475569' }}>
-                      {currency}{Number(p.costPrice || 0).toFixed(2)}
+                      {currency}{Math.round(p.costPrice || 0)}
                       <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
-                        +{((Number(p.salePrice) - Number(p.costPrice || 0))).toFixed(2)} {currency}
+                        +{Math.round(Number(p.salePrice) - Number(p.costPrice || 0))} {currency}
                       </div>
                     </td>
 
@@ -550,37 +562,10 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>Deporte</label>
-                  <select
-                    value={sport}
-                    onChange={(e) => setSport(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="Fútbol">Fútbol</option>
-                    <option value="Básquet">Básquet</option>
-                    <option value="Vóley">Vóley</option>
-                    <option value="Futsal">Futsal</option>
-                    <option value="Entrenamiento">Entrenamiento</option>
-                    <option value="General">General</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>Talla</label>
-                  <input
-                    type="text"
-                    value={size}
-                    onChange={(e) => setSize(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                  />
-                </div>
-
-                <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>Color</label>
                   <input
                     type="text"
+                    placeholder="Ej: Negro, Blanco, Azul..."
                     value={color}
                     onChange={(e) => setColor(e.target.value)}
                     style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
@@ -588,12 +573,25 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                 </div>
               </div>
 
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                  Talla - Número <span style={{ fontWeight: 400, color: '#64748b' }}>(Opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: M, XL, 38, 42..."
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>Precio de Venta ({currency})</label>
                   <input
                     type="number"
-                    step="0.5"
+                    step="1"
                     required
                     value={salePrice}
                     onChange={(e) => setSalePrice(e.target.value)}
@@ -605,7 +603,7 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>Costo de Compra ({currency})</label>
                   <input
                     type="number"
-                    step="0.5"
+                    step="1"
                     value={costPrice}
                     onChange={(e) => setCostPrice(e.target.value)}
                     style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
@@ -648,9 +646,25 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                 </button>
                 <button
                   type="submit"
-                  style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: '#0f172a', color: '#ffffff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                  disabled={isSavingProduct || isUploadingImage}
+                  style={{
+                    flex: 1,
+                    padding: '0.65rem',
+                    borderRadius: '8px',
+                    background: isSavingProduct ? '#475569' : '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 700,
+                    cursor: (isSavingProduct || isUploadingImage) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    opacity: (isSavingProduct || isUploadingImage) ? 0.75 : 1
+                  }}
                 >
-                  {editingId ? 'Guardar Cambios' : 'Registrar Producto'}
+                  {isSavingProduct ? <Loader2 size={16} className="animate-spin" /> : null}
+                  <span>{isSavingProduct ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Registrar Producto')}</span>
                 </button>
               </div>
             </form>
@@ -727,9 +741,25 @@ export function InventoryManager({ currency = 'Bs.', onInventoryChange }) {
                 </button>
                 <button
                   type="submit"
-                  style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: '#0f172a', color: '#ffffff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                  disabled={isAdjustingStock}
+                  style={{
+                    flex: 1,
+                    padding: '0.65rem',
+                    borderRadius: '8px',
+                    background: isAdjustingStock ? '#475569' : '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 700,
+                    cursor: isAdjustingStock ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    opacity: isAdjustingStock ? 0.75 : 1
+                  }}
                 >
-                  Aplicar Ajuste
+                  {isAdjustingStock ? <Loader2 size={16} className="animate-spin" /> : null}
+                  <span>{isAdjustingStock ? 'Aplicando...' : 'Aplicar Ajuste'}</span>
                 </button>
               </div>
             </form>

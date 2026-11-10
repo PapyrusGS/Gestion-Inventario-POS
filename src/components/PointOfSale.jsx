@@ -11,7 +11,8 @@ import {
   X, 
   AlertCircle,
   Building2,
-  ImageOff
+  ImageOff,
+  Loader2
 } from 'lucide-react';
 import { db, executeSale } from '../db/db';
 import { api } from '../services/api';
@@ -25,6 +26,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [cashReceived, setCashReceived] = useState('');
   const [lastSaleResult, setLastSaleResult] = useState(null);
+  const [isProcessingSale, setIsProcessingSale] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const loadProducts = async () => {
@@ -81,7 +83,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
         if (existing.quantity >= product.stock) {
-          alert(`Existencias insuficientes para ${product.name} en esta sucursal.`);
+          alert('Ya no se tiene más items');
           return prev;
         }
         return prev.map(item => 
@@ -111,7 +113,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
         const newQty = item.quantity + delta;
         if (newQty <= 0) return null;
         if (newQty > item.maxStock) {
-          alert(`Cantidad máxima disponible: ${item.maxStock} unidades.`);
+          alert('Ya no se tiene más items');
           return item;
         }
         return { ...item, quantity: newQty };
@@ -129,7 +131,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const handleConfirmSale = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isProcessingSale) return; // Bloqueo síncrono inmediato contra clics repetidos
     setErrorMsg('');
 
     const cashValue = Number(cashReceived) || cartTotal;
@@ -138,6 +140,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
       return;
     }
 
+    setIsProcessingSale(true);
     try {
       let result;
       try {
@@ -151,6 +154,8 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
             unitPrice: it.price
           })),
           paymentMethod: paymentMethod === 'efectivo' ? 'cash' : (paymentMethod === 'qr' ? 'qr' : 'transfer'),
+          customerName: 'Cliente Ocasional',
+          customerPhone: currentUser?.username || 'admin',
           cashReceived: cashValue,
           changeReturned: Math.max(0, cashValue - cartTotal),
           branchId: activeBranchId
@@ -160,6 +165,8 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
         result = await executeSale({
           items: cart,
           paymentMethod,
+          customerName: 'Cliente Ocasional',
+          customerPhone: currentUser?.username || 'admin',
           cashReceived: cashValue
         });
       }
@@ -181,6 +188,8 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
       if (onSaleCompleted) onSaleCompleted();
     } catch (err) {
       setErrorMsg(err.message || 'Error al procesar la venta.');
+    } finally {
+      setIsProcessingSale(false);
     }
   };
 
@@ -242,8 +251,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
             return (
               <button
                 key={p.id}
-                onClick={() => !isOutOfStock && addToCart(p)}
-                disabled={isOutOfStock}
+                onClick={() => isOutOfStock ? alert('Ya no se tiene más items') : addToCart(p)}
                 className={`product-card ${isOutOfStock ? 'out-of-stock' : ''}`}
                 style={{
                   display: 'flex',
@@ -300,7 +308,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
                     {isOutOfStock ? 'Agotado' : `${p.stock} unid.`}
                   </span>
                   <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#059669', whiteSpace: 'nowrap', fontFamily: 'var(--font-display)' }}>
-                    {currency}{Number(p.salePrice).toFixed(2)}
+                    {currency}{Math.round(p.salePrice)}
                   </div>
                 </div>
               </button>
@@ -340,7 +348,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
                 <div className="cart-item-info">
                   <div className="cart-item-name">{item.name}</div>
                   <div className="cart-item-subtext">
-                    {currency}{Number(item.price).toFixed(2)} c/u | Total: {currency}{(item.price * item.quantity).toFixed(2)}
+                    {currency}{Math.round(item.price)} c/u | Total: {currency}{Math.round(item.price * item.quantity)}
                   </div>
                 </div>
 
@@ -369,7 +377,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
         <div className="cart-footer">
           <div className="cart-total-box">
             <span className="cart-total-label">Total a pagar:</span>
-            <span className="cart-total-number">{currency}{cartTotal.toFixed(2)}</span>
+            <span className="cart-total-number">{currency}{Math.round(cartTotal)}</span>
           </div>
 
           <button
@@ -378,7 +386,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
             className="btn-touch-primary"
             style={{ width: '100%', opacity: cart.length === 0 ? 0.5 : 1 }}
           >
-            <span>Cobrar {currency}{cartTotal.toFixed(2)}</span>
+            <span>Cobrar {currency}{Math.round(cartTotal)}</span>
           </button>
         </div>
       </div>
@@ -398,7 +406,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
               <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
                 <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>Total a cobrar</span>
                 <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#0f172a', fontFamily: 'var(--font-display)' }}>
-                  {currency}{cartTotal.toFixed(2)}
+                  {currency}{Math.round(cartTotal)}
                 </div>
               </div>
 
@@ -462,7 +470,7 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
                   {cashReceived && Number(cashReceived) >= cartTotal && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#dcfce7', padding: '0.75rem 1rem', borderRadius: '8px', color: '#15803d', fontWeight: 700 }}>
                       <span>Cambio a entregar:</span>
-                      <span style={{ fontSize: '1.3rem' }}>{currency}{(Number(cashReceived) - cartTotal).toFixed(2)}</span>
+                      <span style={{ fontSize: '1.3rem' }}>{currency}{Math.round(Number(cashReceived) - cartTotal)}</span>
                     </div>
                   )}
                 </div>
@@ -478,11 +486,20 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
               <button
                 type="button"
                 onClick={handleConfirmSale}
+                disabled={isProcessingSale}
                 className="btn-touch-primary"
-                style={{ width: '100%' }}
+                style={{
+                  width: '100%',
+                  opacity: isProcessingSale ? 0.75 : 1,
+                  cursor: isProcessingSale ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
               >
-                <CheckCircle2 size={24} />
-                <span>Confirmar Cobro</span>
+                {isProcessingSale ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
+                <span>{isProcessingSale ? 'Procesando Venta...' : 'Confirmar Cobro'}</span>
               </button>
             </div>
           </div>
@@ -510,13 +527,13 @@ export function PointOfSale({ currency = 'Bs.', onSaleCompleted, currentUser, ac
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ color: '#64748b' }}>Total cobrado:</span>
                 <span style={{ fontWeight: 800, fontSize: '1.2rem', color: '#059669' }}>
-                  {currency}{lastSaleResult.total.toFixed(2)}
+                  {currency}{Math.round(lastSaleResult.total)}
                 </span>
               </div>
               {lastSaleResult.changeGiven > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700, borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem' }}>
                   <span>Cambio entregado:</span>
-                  <span>{currency}{lastSaleResult.changeGiven.toFixed(2)}</span>
+                  <span>{currency}{Math.round(lastSaleResult.changeGiven)}</span>
                 </div>
               )}
             </div>

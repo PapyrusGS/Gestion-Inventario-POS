@@ -16,15 +16,16 @@ import {
 } from 'lucide-react';
 import { db } from '../db/db';
 import { api } from '../services/api';
+import { getBoliviaDate, getBoliviaMonth, formatBoliviaDateTime } from '../utils/dateUtils';
 
 export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId = 1 }) {
   const isOwner = currentUser?.role === 'OWNER';
 
   const [reportMode, setReportMode] = useState('daily'); // 'daily' | 'range' | 'monthly'
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(() => getBoliviaDate());
+  const [startDate, setStartDate] = useState(() => getBoliviaDate());
+  const [endDate, setEndDate] = useState(() => getBoliviaDate());
+  const [selectedMonth, setSelectedMonth] = useState(() => getBoliviaMonth());
 
   const [periodSales, setPeriodSales] = useState([]);
   const [criticalProducts, setCriticalProducts] = useState([]);
@@ -34,6 +35,7 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
   const [selectedSaleToVoid, setSelectedSaleToVoid] = useState(null);
   const [voidReason, setVoidReason] = useState('');
   const [voidError, setVoidError] = useState('');
+  const [isVoidingSale, setIsVoidingSale] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -53,15 +55,21 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
 
       let filtered = [];
       if (reportMode === 'daily') {
-        filtered = allSales.filter(s => s.createdAt && s.createdAt.startsWith(selectedDate));
+        filtered = allSales.filter(s => {
+          if (!s.createdAt) return false;
+          return getBoliviaDate(s.createdAt) === selectedDate;
+        });
       } else if (reportMode === 'range') {
         filtered = allSales.filter(s => {
           if (!s.createdAt) return false;
-          const saleDate = s.createdAt.split('T')[0];
+          const saleDate = getBoliviaDate(s.createdAt);
           return saleDate >= startDate && saleDate <= endDate;
         });
       } else if (reportMode === 'monthly') {
-        filtered = allSales.filter(s => s.createdAt && s.createdAt.startsWith(selectedMonth));
+        filtered = allSales.filter(s => {
+          if (!s.createdAt) return false;
+          return getBoliviaDate(s.createdAt).startsWith(selectedMonth);
+        });
       }
 
       filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -81,6 +89,7 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
 
   const handleVoidSale = async (e) => {
     e.preventDefault();
+    if (isVoidingSale) return; // Bloquear spam clicks
     setVoidError('');
 
     if (!voidReason || voidReason.trim().length < 5) {
@@ -88,6 +97,7 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
       return;
     }
 
+    setIsVoidingSale(true);
     try {
       await api.voidSale(selectedSaleToVoid.id, voidReason.trim());
       setSelectedSaleToVoid(null);
@@ -95,40 +105,43 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
       await loadData();
     } catch (err) {
       setVoidError(err.message || 'Error al anular la venta.');
+    } finally {
+      setIsVoidingSale(false);
     }
   };
 
-  // Cálculos consolidados del periodo
-  const totalSales = periodSales.reduce((sum, s) => sum + s.total, 0);
-  const totalCash = periodSales
-    .filter(s => s.paymentMethod === 'efectivo')
-    .reduce((sum, s) => sum + s.total, 0);
-  const totalTransfer = periodSales
-    .filter(s => s.paymentMethod === 'transferencia')
-    .reduce((sum, s) => sum + s.total, 0);
-  const totalProfit = periodSales.reduce((sum, s) => sum + (s.estimatedProfit || 0), 0);
+  // Cálculos consolidados del periodo (excluyendo ventas anuladas)
+  const validSales = periodSales.filter(s => s.status !== 'VOIDED');
+  const totalSales = validSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
+  const totalCash = validSales
+    .filter(s => s.paymentMethod === 'efectivo' || s.paymentMethod === 'cash')
+    .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  const totalTransfer = validSales
+    .filter(s => s.paymentMethod === 'transferencia' || s.paymentMethod === 'transfer' || s.paymentMethod === 'qr')
+    .reduce((sum, s) => sum + Number(s.total || 0), 0);
+  const totalProfit = validSales.reduce((sum, s) => sum + Number(s.profit !== undefined ? s.profit : (s.estimatedProfit || 0)), 0);
 
   // Agrupación por días para el modo mensual
   const monthlyBreakdown = React.useMemo(() => {
     if (reportMode !== 'monthly') return [];
     const map = {};
-    for (const sale of periodSales) {
-      const day = sale.createdAt ? sale.createdAt.split('T')[0] : 'Sin fecha';
+    for (const sale of validSales) {
+      const day = sale.createdAt ? getBoliviaDate(sale.createdAt) : 'Sin fecha';
       if (!map[day]) {
         map[day] = { day, count: 0, cash: 0, transfer: 0, total: 0, profit: 0 };
       }
       map[day].count += 1;
-      map[day].total += sale.total;
-      map[day].profit += (sale.estimatedProfit || 0);
-      if (sale.paymentMethod === 'efectivo') {
-        map[day].cash += sale.total;
+      map[day].total += Number(sale.total || 0);
+      map[day].profit += Number(sale.profit !== undefined ? sale.profit : (sale.estimatedProfit || 0));
+      if (sale.paymentMethod === 'efectivo' || sale.paymentMethod === 'cash') {
+        map[day].cash += Number(sale.total || 0);
       } else {
-        map[day].transfer += sale.total;
+        map[day].transfer += Number(sale.total || 0);
       }
     }
     // Ordenar ascendente por día
     return Object.values(map).sort((a, b) => a.day.localeCompare(b.day));
-  }, [periodSales, reportMode]);
+  }, [validSales, reportMode]);
 
   // Obtener etiqueta legible del periodo actual
   const getPeriodLabel = () => {
@@ -150,13 +163,7 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
   // Función de Exportación a PDF formal
   const handleExportPDF = () => {
     const periodLabel = getPeriodLabel();
-    const generationDate = new Date().toLocaleString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const generationDate = formatBoliviaDateTime(new Date(), true);
 
     let tableRowsHtml = '';
     if (reportMode === 'monthly') {
@@ -168,7 +175,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
             <th style="padding:8px; text-align:right;">Efectivo (${currency})</th>
             <th style="padding:8px; text-align:right;">Transf. / QR (${currency})</th>
             <th style="padding:8px; text-align:right;">Total (${currency})</th>
-            <th style="padding:8px; text-align:right;">Margen (${currency})</th>
           </tr>
         </thead>
         <tbody>
@@ -179,7 +185,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
               <td style="padding:7px 8px; text-align:right;">${row.cash.toFixed(2)}</td>
               <td style="padding:7px 8px; text-align:right;">${row.transfer.toFixed(2)}</td>
               <td style="padding:7px 8px; text-align:right; font-weight:700;">${row.total.toFixed(2)}</td>
-              <td style="padding:7px 8px; text-align:right; color:#059669;">${row.profit.toFixed(2)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -190,7 +195,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
             <td style="padding:10px 8px; text-align:right;">${totalCash.toFixed(2)}</td>
             <td style="padding:10px 8px; text-align:right;">${totalTransfer.toFixed(2)}</td>
             <td style="padding:10px 8px; text-align:right; color:#0f172a;">${totalSales.toFixed(2)}</td>
-            <td style="padding:10px 8px; text-align:right; color:#059669;">${totalProfit.toFixed(2)}</td>
           </tr>
         </tfoot>
       `;
@@ -200,41 +204,36 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
           <tr style="background:#0f172a; color:#ffffff; font-size:11px;">
             <th style="padding:8px; text-align:left;">N° Comprobante</th>
             <th style="padding:8px; text-align:left;">Fecha / Hora</th>
+            <th style="padding:8px; text-align:left;">Vendedor</th>
             <th style="padding:8px; text-align:left;">Detalle de Artículos</th>
             <th style="padding:8px; text-align:center;">Método</th>
             <th style="padding:8px; text-align:right;">Total (${currency})</th>
-            <th style="padding:8px; text-align:right;">Margen (${currency})</th>
           </tr>
         </thead>
         <tbody>
           ${periodSales.map(sale => {
-            const timeStr = new Date(sale.createdAt).toLocaleString('es-ES', {
-              day: '2-digit',
-              month: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
+            const timeStr = formatBoliviaDateTime(sale.createdAt);
             const itemsStr = sale.items && sale.items.length
-              ? sale.items.map(it => `${it.quantity}x ${it.name}`).join(', ')
+              ? sale.items.map(it => `${it.quantity}x ${it.productName || it.product_name || it.name || 'Artículo'}`).join(', ')
               : 'Detalle estándar';
+            const sellerStr = sale.sellerName || sale.customerPhone || 'admin';
 
             return `
               <tr style="border-bottom:1px solid #e2e8f0; font-size:11px;">
-                <td style="padding:7px 8px; font-weight:700;">${sale.saleNumber}</td>
+                <td style="padding:7px 8px; font-weight:700;">${sale.saleNumber || sale.sale_number}</td>
                 <td style="padding:7px 8px; color:#475569;">${timeStr}</td>
+                <td style="padding:7px 8px; color:#1e293b; font-weight:600;">${sellerStr}</td>
                 <td style="padding:7px 8px; color:#334155;">${itemsStr}</td>
-                <td style="padding:7px 8px; text-align:center; text-transform:capitalize;">${sale.paymentMethod}</td>
+                <td style="padding:7px 8px; text-align:center; text-transform:capitalize;">${sale.paymentMethod || sale.payment_method}</td>
                 <td style="padding:7px 8px; text-align:right; font-weight:700;">${sale.total.toFixed(2)}</td>
-                <td style="padding:7px 8px; text-align:right; color:#059669;">${(sale.estimatedProfit || 0).toFixed(2)}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
         <tfoot>
           <tr style="background:#f1f5f9; font-weight:800; font-size:12px; border-top:2px solid #0f172a;">
-            <td colspan="4" style="padding:10px 8px; text-align:right;">TOTAL PERIODO (${periodSales.length} transacciones):</td>
+            <td colspan="5" style="padding:10px 8px; text-align:right;">TOTAL PERIODO (${periodSales.length} transacciones):</td>
             <td style="padding:10px 8px; text-align:right; color:#0f172a;">${totalSales.toFixed(2)}</td>
-            <td style="padding:10px 8px; text-align:right; color:#059669;">${totalProfit.toFixed(2)}</td>
           </tr>
         </tfoot>
       `;
@@ -253,7 +252,7 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
           .title { font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
           .subtitle { font-size: 13px; color: #475569; margin-top: 3px; font-weight: 600; }
           .meta-info { font-size: 11px; color: #64748b; text-align: right; line-height: 1.4; }
-          .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+          .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
           .metric-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; }
           .metric-label { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; }
           .metric-val { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 3px; }
@@ -292,10 +291,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
           <div class="metric-card">
             <div class="metric-label">Transferencias / QR</div>
             <div class="metric-val">${currency}${totalTransfer.toFixed(2)}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">Margen Estimado</div>
-            <div class="metric-val" style="color:#059669;">${currency}${totalProfit.toFixed(2)}</div>
           </div>
         </div>
 
@@ -489,20 +484,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
             {periodSales.length} transacciones registradas
           </div>
         </div>
-
-        {/* Margen estimado */}
-        <div className="metric-card amber">
-          <div className="metric-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <TrendingUp size={18} color="#f59e0b" />
-            <span>Margen Estimado</span>
-          </div>
-          <div className="metric-number" style={{ color: '#b45309' }}>
-            {currency}{totalProfit.toFixed(2)}
-          </div>
-          <div className="metric-sub">
-            Ingresos brutos menos costo registrado
-          </div>
-        </div>
       </div>
 
       {/* Tabla detallada del reporte */}
@@ -532,13 +513,12 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                   <th style={{ padding: '0.85rem', textAlign: 'right' }}>Efectivo</th>
                   <th style={{ padding: '0.85rem', textAlign: 'right' }}>Transferencia / QR</th>
                   <th style={{ padding: '0.85rem', textAlign: 'right' }}>Total</th>
-                  <th style={{ padding: '0.85rem', textAlign: 'right' }}>Margen</th>
                 </tr>
               </thead>
               <tbody>
                 {monthlyBreakdown.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
                       No se registran ventas para el mes seleccionado.
                     </td>
                   </tr>
@@ -550,7 +530,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                       <td style={{ padding: '0.85rem', textAlign: 'right', color: '#15803d' }}>{currency}{row.cash.toFixed(2)}</td>
                       <td style={{ padding: '0.85rem', textAlign: 'right', color: '#1d4ed8' }}>{currency}{row.transfer.toFixed(2)}</td>
                       <td style={{ padding: '0.85rem', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{currency}{row.total.toFixed(2)}</td>
-                      <td style={{ padding: '0.85rem', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{currency}{row.profit.toFixed(2)}</td>
                     </tr>
                   ))
                 )}
@@ -563,31 +542,26 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                 <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.82rem', textTransform: 'uppercase' }}>
                   <th style={{ padding: '0.85rem 1.25rem' }}>Comprobante</th>
                   <th style={{ padding: '0.85rem' }}>Fecha / Hora</th>
+                  <th style={{ padding: '0.85rem' }}>Vendedor</th>
                   <th style={{ padding: '0.85rem' }}>Artículos Vendidos</th>
                   <th style={{ padding: '0.85rem', textAlign: 'center' }}>Método</th>
                   <th style={{ padding: '0.85rem', textAlign: 'right' }}>Total</th>
-                  <th style={{ padding: '0.85rem', textAlign: 'right' }}>Margen</th>
                   <th style={{ padding: '0.85rem', textAlign: 'center' }}>Estado</th>
-                  <th style={{ padding: '0.85rem', textAlign: 'center' }}>Acción</th>
+                  {isOwner && <th style={{ padding: '0.85rem', textAlign: 'center' }}>Acción</th>}
                 </tr>
               </thead>
               <tbody>
                 {periodSales.length === 0 ? (
                   <tr>
-                    <td colSpan={isOwner ? 9 : 7} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan={isOwner ? 8 : 7} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
                       No se registran ventas en el periodo consultado.
                     </td>
                   </tr>
                 ) : (
                   periodSales.map(sale => {
-                    const timeStr = new Date(sale.createdAt).toLocaleString('es-ES', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
+                    const timeStr = formatBoliviaDateTime(sale.createdAt);
                     const itemsSummary = sale.items && sale.items.length
-                      ? sale.items.map(it => `${it.quantity}x ${it.product_name || it.name}`).join(', ')
+                      ? sale.items.map(it => `${it.quantity}x ${it.productName || it.product_name || it.name || 'Artículo'}`).join(', ')
                       : 'Artículos de venta';
                     const isVoided = sale.status === 'VOIDED';
 
@@ -598,6 +572,19 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                         </td>
                         <td style={{ padding: '0.85rem', fontSize: '0.85rem', color: '#64748b' }}>
                           {timeStr}
+                        </td>
+                        <td style={{ padding: '0.85rem', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            background: '#f1f5f9',
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '6px',
+                            color: '#334155'
+                          }}>
+                            {sale.sellerName || sale.customerPhone || 'admin'}
+                          </span>
                         </td>
                         <td style={{ padding: '0.85rem', fontSize: '0.85rem', color: '#334155', maxWidth: '240px' }}>
                           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
@@ -620,11 +607,6 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                         <td style={{ padding: '0.85rem', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
                           {currency}{Number(sale.total).toFixed(2)}
                         </td>
-                        {isOwner && (
-                          <td style={{ padding: '0.85rem', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
-                            {currency}{Number(sale.profit !== undefined ? sale.profit : (sale.estimatedProfit || 0)).toFixed(2)}
-                          </td>
-                        )}
                         <td style={{ padding: '0.85rem', textAlign: 'center' }}>
                           {isVoided ? (
                             <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#b91c1c', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 800 }} title={sale.voided_reason || 'Venta Anulada'}>
@@ -760,9 +742,33 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.3rem' }}>
                   Motivo de Anulación (Obligatorio)
                 </label>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setVoidReason('Venta duplicada por conexión lenta')}
+                    style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '4px', color: '#991b1b', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    + Venta duplicada por lentitud
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVoidReason('Prueba de sistema')}
+                    style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', background: '#e2e8f0', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#334155', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    + Prueba de sistema
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVoidReason('Error en cobro / devolución de cliente')}
+                    style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', background: '#e2e8f0', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#334155', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    + Error en cobro
+                  </button>
+                </div>
                 <textarea
                   required
                   rows="3"
+                  placeholder="Escriba o seleccione un motivo arriba..."
                   value={voidReason}
                   onChange={(e) => setVoidReason(e.target.value)}
                   style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
@@ -779,9 +785,20 @@ export function OwnerDashboard({ currency = 'Bs.', currentUser, activeBranchId =
                 </button>
                 <button
                   type="submit"
-                  style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: '#dc2626', color: '#ffffff', border: 'none', fontWeight: 700, cursor: 'pointer' }}
+                  disabled={isVoidingSale}
+                  style={{
+                    flex: 1,
+                    padding: '0.65rem',
+                    borderRadius: '8px',
+                    background: isVoidingSale ? '#7f1d1d' : '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 700,
+                    cursor: isVoidingSale ? 'not-allowed' : 'pointer',
+                    opacity: isVoidingSale ? 0.75 : 1
+                  }}
                 >
-                  Confirmar Anulación
+                  {isVoidingSale ? 'Anulando...' : 'Confirmar Anulación'}
                 </button>
               </div>
             </form>

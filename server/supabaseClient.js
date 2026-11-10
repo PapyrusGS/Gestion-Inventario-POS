@@ -8,6 +8,7 @@ try {
 }
 
 import { createClient } from '@supabase/supabase-js';
+import { getBoliviaDate } from './dateUtils.js';
 
 const buildStr = (...parts) => parts.join('');
 const DEFAULT_SUPABASE_URL = buildStr('https://uruveaadqbhvwtmn', 'qwds.supabase.co');
@@ -28,17 +29,28 @@ export const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KE
 });
 
 // Helper de auditoría en Supabase
-export async function logSupabaseAudit(req, { action, targetEntity, targetId = null, oldValues = null, newValues = null, reason = null }) {
+export async function logSupabaseAudit(req, { action, targetEntity, targetId = null, oldValues = null, newValues = null, reason = null, user = null }) {
   try {
     const ipAddress = req?.ip || req?.headers?.['x-forwarded-for'] || req?.socket?.remoteAddress || '127.0.0.1';
     const userAgent = req?.headers?.['user-agent'] || 'DESCONOCIDO';
+    const activeUser = user || req?.user;
+    const username = activeUser?.username || activeUser?.fullName || 'admin';
+
+    let enrichedNewValues = newValues;
+    if (newValues && typeof newValues === 'object') {
+      enrichedNewValues = { ...newValues, _user: username };
+    } else if (newValues !== null && newValues !== undefined) {
+      enrichedNewValues = { data: newValues, _user: username };
+    } else {
+      enrichedNewValues = { _user: username };
+    }
 
     await supabaseAdmin.from('audit_logs').insert({
       action,
       target_entity: targetEntity,
       target_id: targetId ? String(targetId) : null,
       old_values: oldValues || null,
-      new_values: newValues || null,
+      new_values: enrichedNewValues,
       reason: reason || null,
       ip_address: String(ipAddress),
       user_agent: String(userAgent)
@@ -84,8 +96,8 @@ export async function getSupabaseProducts(isOwner = false) {
     name: p.name,
     category: p.category,
     sport: p.sport || 'General',
-    size: p.size || 'Estándar',
-    color: p.color || 'Surtido',
+    size: (p.size && p.size !== 'Estándar') ? p.size : '',
+    color: p.color || '',
     costPrice: isOwner ? Number(p.cost_price || 0) : 0,
     salePrice: Number(p.sale_price || 0),
     stock: Number(p.stock || 0),
@@ -108,8 +120,8 @@ export async function createSupabaseProduct(productData, user, req) {
       name: name.trim(),
       category: category || 'Confecciones & Ropa',
       sport: sport || 'General',
-      size: size || 'Estándar',
-      color: color || 'Surtido',
+      size: (size && size.trim() !== '') ? size.trim() : null,
+      color: (color && color.trim() !== '') ? color.trim() : null,
       cost_price: Number(costPrice || 0),
       sale_price: Number(salePrice || 0),
       stock: Number(stock || 0),
@@ -161,8 +173,8 @@ export async function updateSupabaseProduct(id, productData, user, req) {
   if (name !== undefined) updates.name = name.trim();
   if (category !== undefined) updates.category = category;
   if (sport !== undefined) updates.sport = sport;
-  if (size !== undefined) updates.size = size;
-  if (color !== undefined) updates.color = color;
+  if (size !== undefined) updates.size = (size && size.trim() !== '' && size !== 'Estándar') ? size.trim() : null;
+  if (color !== undefined) updates.color = (color && color.trim() !== '') ? color.trim() : null;
   if (costPrice !== undefined) updates.cost_price = Number(costPrice);
   if (salePrice !== undefined) updates.sale_price = Number(salePrice);
   if (minStock !== undefined) updates.min_stock = Number(minStock);
@@ -287,22 +299,24 @@ export async function createSupabaseSale(saleData, user, req) {
     });
   }
 
-  // 2. Generar número correlativo de venta
-  const todayStr = new Date().toISOString().split('T')[0];
+  // 2. Generar número correlativo de venta (basado en el día actual en Bolivia UTC-4)
+  const todayBolivia = getBoliviaDate();
+  const boliviaStartUtc = new Date(`${todayBolivia}T00:00:00-04:00`).toISOString();
   const { count } = await supabaseAdmin
     .from('sales')
     .select('*', { count: 'exact', head: true })
-    .gte('created_at', `${todayStr}T00:00:00Z`);
+    .gte('created_at', boliviaStartUtc);
 
   const saleNumber = clientSaleNumber || `VENTA-${String((count || 0) + 1).padStart(4, '0')}`;
 
   // 3. Insertar venta
+  const seller = user?.username || user?.fullName || 'admin';
   const { data: sale, error: saleErr } = await supabaseAdmin
     .from('sales')
     .insert({
       sale_number: saleNumber,
       customer_name: customerName || 'Cliente Ocasional',
-      customer_phone: customerPhone || '',
+      customer_phone: customerPhone || seller,
       payment_method: paymentMethod || 'cash',
       total,
       total_cost: totalCost,
@@ -365,10 +379,12 @@ export async function getSupabaseSales(filters = {}, isOwner = false) {
     .order('created_at', { ascending: false });
 
   if (filters.startDate) {
-    query = query.gte('created_at', `${filters.startDate}T00:00:00Z`);
+    const startUtc = new Date(`${filters.startDate}T00:00:00-04:00`).toISOString();
+    query = query.gte('created_at', startUtc);
   }
   if (filters.endDate) {
-    query = query.lte('created_at', `${filters.endDate}T23:59:59Z`);
+    const endUtc = new Date(`${filters.endDate}T23:59:59.999-04:00`).toISOString();
+    query = query.lte('created_at', endUtc);
   }
 
   const { data, error } = await query;
@@ -380,6 +396,7 @@ export async function getSupabaseSales(filters = {}, isOwner = false) {
     saleNumber: s.sale_number,
     customerName: s.customer_name || 'Cliente Ocasional',
     customerPhone: s.customer_phone || '',
+    sellerName: s.seller_name || s.customer_phone || 'admin',
     paymentMethod: s.payment_method,
     total: Number(s.total || 0),
     totalCost: isOwner ? Number(s.total_cost || 0) : 0,
@@ -392,7 +409,8 @@ export async function getSupabaseSales(filters = {}, isOwner = false) {
     items: (s.sale_items || []).map(it => ({
       id: it.id,
       productId: it.product_id,
-      productName: it.product_name,
+      productName: it.product_name || it.name || 'Artículo',
+      name: it.product_name || it.name || 'Artículo',
       size: it.size,
       color: it.color,
       quantity: Number(it.quantity),
@@ -575,5 +593,18 @@ export async function getSupabaseAuditLogs(limit = 100) {
     .limit(limit);
 
   if (error) throw error;
-  return data || [];
+  return (data || []).map(log => {
+    let resolvedUser = 'admin';
+    if (log.new_values && typeof log.new_values === 'object') {
+      if (log.new_values._user) resolvedUser = log.new_values._user;
+      else if (log.new_values.username) resolvedUser = log.new_values.username;
+      else if (log.new_values.user) resolvedUser = log.new_values.user;
+    }
+    if (log.username) resolvedUser = log.username;
+
+    return {
+      ...log,
+      username: resolvedUser
+    };
+  });
 }

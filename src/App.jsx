@@ -106,17 +106,25 @@ export function App() {
         <LoginModal onLoginSuccess={handleLoginSuccess} />
       )}
 
-      <Header
-        currentUser={currentUser}
-        onLogout={handleLogout}
-        isOnline={isOnline}
-      />
+      {/* Cabecera y Navegación unificadas y fijas al hacer scroll */}
+      <div className="sticky-top-bar" style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
+        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.12)'
+      }}>
+        <Header
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          isOnline={isOnline}
+        />
 
-      <Navigation
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        lowStockCount={lowStockCount}
-      />
+        <Navigation
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          lowStockCount={lowStockCount}
+        />
+      </div>
 
       <main className="main-content">
         {activeTab === 'pos' && (

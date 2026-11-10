@@ -95,10 +95,13 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.sticky-top-bar {
   position: sticky;
   top: 0;
-  z-index: 50;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
 .brand-section {
