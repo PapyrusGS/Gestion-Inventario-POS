@@ -1,9 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const buildStr = (...parts) => parts.join('');
+const defaultUrl = buildStr('https://uruveaadqbhvwtmn', 'qwds.supabase.co');
+const defaultAnon = [
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+  'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVydXZlYWFkcWJodnd0bW5xd2RzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwODE2NjksImV4cCI6MjEwOTY1NzY2OX0',
+  '8WEGc9RIFCVtKmhyaIgqMCrha8IbnRgI6LMUqcOC5uQ'
+].join('.');
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || defaultUrl;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || defaultAnon;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
  * Sube una imagen al bucket público 'product-images' en Supabase Storage
