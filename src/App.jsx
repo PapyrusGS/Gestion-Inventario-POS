@@ -59,6 +59,15 @@ export function App() {
     }
   }, [currentUser]);
 
+  const isOwner = currentUser?.role === 'OWNER';
+
+  // Si no es propietario (ej. vendedor), restringir acceso a Cierre de Caja y Auditoría
+  useEffect(() => {
+    if (!isOwner && (activeTab === 'dashboard' || activeTab === 'audit')) {
+      setActiveTab('pos');
+    }
+  }, [isOwner, activeTab]);
+
   const updateBadges = useCallback(async () => {
     try {
       let prods = [];
@@ -123,6 +132,7 @@ export function App() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           lowStockCount={lowStockCount}
+          currentUser={currentUser}
         />
       </div>
 
@@ -145,7 +155,7 @@ export function App() {
           />
         )}
 
-        {activeTab === 'dashboard' && (
+        {activeTab === 'dashboard' && isOwner && (
           <OwnerDashboard
             key={`dash-${refreshTrigger}-${currentUser?.id || 'anon'}`}
             currency={currency}
@@ -153,7 +163,7 @@ export function App() {
           />
         )}
 
-        {activeTab === 'audit' && (
+        {activeTab === 'audit' && isOwner && (
           <AuditPanel />
         )}
       </main>

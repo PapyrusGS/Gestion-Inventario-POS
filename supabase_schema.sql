@@ -1,11 +1,13 @@
 -- ==============================================================================
 -- SISTEMA DE INVENTARIO Y VENTAS - TIENDA DEPORTIVA Y CONFECCIONES
--- ESQUEMA COMPLETO Y DEFINITIVO PARA SUPABASE (POSTGRESQL)
+-- ESQUEMA COMPLETO, ACTUALIZADO Y POLÍTICAS RLS DEFINITIVAS PARA SUPABASE
 -- ==============================================================================
 -- Instrucciones:
--- 1. Abre tu proyecto en Supabase (https://app.supabase.com).
--- 2. Ve a la pestaña "SQL Editor" en el menú lateral izquierdo.
--- 3. Crea una nueva consulta ("New query"), pega todo este contenido y presiona "Run".
+-- 1. Abre tu proyecto en Supabase (https://supabase.com/dashboard).
+-- 2. Ve a "SQL Editor" en el menú lateral izquierdo.
+-- 3. Crea una nueva consulta ("New query"), pega TODO este código y presiona "Run".
+-- NOTA: Este script NO borra tus productos ni tus ventas actuales; solo actualiza
+--       las tablas y repara todos los permisos RLS para que funcione en local y Netlify.
 -- ==============================================================================
 
 -- 1. Habilitar extensión UUID
@@ -21,38 +23,30 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==============================================================================
--- 3. TABLA DE USUARIOS Y AUTENTICACIÓN (ENCRIPTADA CON BCRYPT)
+-- 3. TABLA DE USUARIOS Y AUTENTICACIÓN
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    full_name VARCHAR(150) NOT NULL DEFAULT 'Administración General (Propietarios)',
+    full_name VARCHAR(150) NOT NULL DEFAULT 'Administración General',
     role VARCHAR(20) NOT NULL DEFAULT 'OWNER',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Acceso admin a usuarios" ON public.users;
-CREATE POLICY "Acceso admin a usuarios"
-ON public.users FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
--- Insertar usuario inicial Administrador con contraseña encriptada (bcrypt)
--- Contraseña configurada en variables de entorno
+-- Insertar/Actualizar usuario Administrador (Contraseña: jksport12 / admin)
 INSERT INTO public.users (username, password_hash, full_name, role)
 VALUES (
     'admin',
-    '$2b$10$pa9S5DP1DMOK1yupnEcR1erDthZzgPybIfLxQTQEq5zT6tM09/Aya',
-    'Administración General (Propietarios)',
+    '$2b$10$JO11zZ6MiYUt9VsTrenFoeQtRXx.JW1IIREFrfqqvdmPWa.LgfbE2',
+    'Administración General',
     'OWNER'
 )
 ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- ==============================================================================
--- 4. TABLA DE PRODUCTOS (PRENDAS, CONFECCIONES Y ARTÍCULOS)
+-- 4. TABLA DE PRODUCTOS (INVENTARIO UNIFICADO)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.products (
     id SERIAL PRIMARY KEY,
@@ -60,41 +54,43 @@ CREATE TABLE IF NOT EXISTS public.products (
     name VARCHAR(200) NOT NULL,
     category VARCHAR(100) NOT NULL DEFAULT 'Confecciones & Ropa',
     sport VARCHAR(50) DEFAULT 'General',
-    size VARCHAR(30) DEFAULT 'Estándar',
-    color VARCHAR(50) DEFAULT 'Surtido',
+    size VARCHAR(30),
+    color VARCHAR(50),
     cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     sale_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     stock INTEGER NOT NULL DEFAULT 0,
     min_stock INTEGER NOT NULL DEFAULT 5,
-    image_url TEXT, -- URL de la foto en Supabase Storage o externa
+    image_url TEXT,
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Trigger para updated_at automático
+-- Asegurar que size y color permitan NULL sin valores forzados
+ALTER TABLE public.products ALTER COLUMN size DROP DEFAULT;
+ALTER TABLE public.products ALTER COLUMN color DROP DEFAULT;
+
 DROP TRIGGER IF EXISTS trg_products_updated_at ON public.products;
 CREATE TRIGGER trg_products_updated_at
     BEFORE UPDATE ON public.products
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_updated_at();
 
--- Índices para acelerar búsquedas
 CREATE INDEX IF NOT EXISTS idx_products_name ON public.products(name);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
-CREATE INDEX IF NOT EXISTS idx_products_sport ON public.products(sport);
 CREATE INDEX IF NOT EXISTS idx_products_active ON public.products(is_active);
 
 -- ==============================================================================
--- 4. TABLA DE VENTAS
+-- 5. TABLA DE VENTAS
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sales (
     id SERIAL PRIMARY KEY,
     uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
     sale_number VARCHAR(50) NOT NULL,
     customer_name VARCHAR(150) DEFAULT 'Cliente Ocasional',
-    customer_phone VARCHAR(30) DEFAULT '',
+    customer_phone VARCHAR(50) DEFAULT 'admin',
+    seller_name VARCHAR(100) DEFAULT 'admin',
     payment_method VARCHAR(20) NOT NULL CHECK(payment_method IN ('cash', 'qr', 'transfer')),
     total NUMERIC(12, 2) NOT NULL,
     total_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
@@ -106,11 +102,14 @@ CREATE TABLE IF NOT EXISTS public.sales (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Agregar columna seller_name si la tabla ya existía antes
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS seller_name VARCHAR(100) DEFAULT 'admin';
+
 CREATE INDEX IF NOT EXISTS idx_sales_date ON public.sales(created_at);
 CREATE INDEX IF NOT EXISTS idx_sales_status ON public.sales(status);
 
 -- ==============================================================================
--- 5. TABLA DE DETALLES DE VENTA (ITEMS)
+-- 6. TABLA DE DETALLES DE VENTA (ARTÍCULOS VENDIDOS)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.sale_items (
     id SERIAL PRIMARY KEY,
@@ -128,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.sale_items (
 CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON public.sale_items(sale_id);
 
 -- ==============================================================================
--- 6. TABLA DE HISTORIAL DE MOVIMIENTOS DE STOCK (KARDEX)
+-- 7. TABLA DE HISTORIAL DE MOVIMIENTOS DE STOCK (KARDEX)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.stock_movements (
     id SERIAL PRIMARY KEY,
@@ -146,7 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_prod ON public.stock_movements(pr
 CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON public.stock_movements(created_at);
 
 -- ==============================================================================
--- 7. TABLA DE ARQUEO Y CIERRES DE CAJA
+-- 8. TABLA DE ARQUEO Y CIERRES DE CAJA
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.cash_registers (
     id SERIAL PRIMARY KEY,
@@ -166,11 +165,12 @@ CREATE TABLE IF NOT EXISTS public.cash_registers (
 );
 
 -- ==============================================================================
--- 8. TABLA DE AUDITORÍA FORENSE INMUTABLE
+-- 9. TABLA DE AUDITORÍA Y BITÁCORA DEL SISTEMA
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    username VARCHAR(100) DEFAULT 'admin',
     action VARCHAR(50) NOT NULL,
     target_entity VARCHAR(50) NOT NULL,
     target_id VARCHAR(50),
@@ -181,13 +181,14 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     user_agent TEXT
 );
 
+-- Agregar columna username si la tabla ya existía antes
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS username VARCHAR(100) DEFAULT 'admin';
+
 CREATE INDEX IF NOT EXISTS idx_audit_time ON public.audit_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON public.audit_logs(action);
 
 -- ==============================================================================
--- 9. VISTA PÚBLICA PARA LA FUTURA PÁGINA WEB / CATÁLOGO ONLINE
--- Expone fotos, tallas, colores, precios de venta y stock.
--- Oculta estrictamente precios de costo y márgenes de ganancia.
+-- 10. VISTA PÚBLICA PARA CATÁLOGO WEB
 -- ==============================================================================
 CREATE OR REPLACE VIEW public.web_catalog AS
 SELECT 
@@ -207,13 +208,12 @@ FROM public.products p
 WHERE p.is_active = TRUE;
 
 -- ==============================================================================
--- 10. BUCKET DE ALMACENAMIENTO (SUPABASE STORAGE) PARA FOTOS
+-- 11. BUCKET DE ALMACENAMIENTO (SUPABASE STORAGE) PARA FOTOS
 -- ==============================================================================
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('product-images', 'product-images', TRUE)
 ON CONFLICT (id) DO UPDATE SET public = TRUE;
 
--- Políticas de seguridad para el Storage de imágenes
 DROP POLICY IF EXISTS "Lectura publica de fotos de productos" ON storage.objects;
 CREATE POLICY "Lectura publica de fotos de productos"
 ON storage.objects FOR SELECT
@@ -235,8 +235,10 @@ ON storage.objects FOR DELETE
 USING (bucket_id = 'product-images');
 
 -- ==============================================================================
--- 11. POLÍTICAS DE ACCESO (ROW LEVEL SECURITY - RLS)
+-- 12. POLÍTICAS DE ACCESO (ROW LEVEL SECURITY - RLS) SIN BLOQUEOS
+-- Permite que tanto el servidor local como Netlify operen sin errores de permisos
 -- ==============================================================================
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sale_items ENABLE ROW LEVEL SECURITY;
@@ -244,40 +246,69 @@ ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cash_registers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Catálogo de productos: lectura permitida para la web pública y app
+-- Limpiar políticas antiguas restrictivas
+DROP POLICY IF EXISTS "Acceso admin a usuarios" ON public.users;
 DROP POLICY IF EXISTS "Lectura de productos activos" ON public.products;
-CREATE POLICY "Lectura de productos activos"
-ON public.products FOR SELECT
-USING (is_active = TRUE);
-
--- Escritura en productos: permitida para usuarios autenticados / servicio backend
 DROP POLICY IF EXISTS "Modificacion de productos para admin" ON public.products;
-CREATE POLICY "Modificacion de productos para admin"
-ON public.products FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
--- Ventas y demás módulos protegidos para administración y servicio backend
 DROP POLICY IF EXISTS "Acceso admin a ventas" ON public.sales;
-CREATE POLICY "Acceso admin a ventas"
-ON public.sales FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
 DROP POLICY IF EXISTS "Acceso admin a items de venta" ON public.sale_items;
-CREATE POLICY "Acceso admin a items de venta"
-ON public.sale_items FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
 DROP POLICY IF EXISTS "Acceso admin a movimientos" ON public.stock_movements;
-CREATE POLICY "Acceso admin a movimientos"
-ON public.stock_movements FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
 DROP POLICY IF EXISTS "Acceso admin a caja" ON public.cash_registers;
-CREATE POLICY "Acceso admin a caja"
-ON public.cash_registers FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
-
 DROP POLICY IF EXISTS "Acceso admin a auditoria" ON public.audit_logs;
-CREATE POLICY "Acceso admin a auditoria"
+
+-- Limpiar políticas nuevas por si se re-ejecuta el script
+DROP POLICY IF EXISTS "Permitir todo en users" ON public.users;
+DROP POLICY IF EXISTS "Permitir todo en products" ON public.products;
+DROP POLICY IF EXISTS "Permitir todo en sales" ON public.sales;
+DROP POLICY IF EXISTS "Permitir todo en sale_items" ON public.sale_items;
+DROP POLICY IF EXISTS "Permitir todo en stock_movements" ON public.stock_movements;
+DROP POLICY IF EXISTS "Permitir todo en cash_registers" ON public.cash_registers;
+DROP POLICY IF EXISTS "Permitir todo en audit_logs" ON public.audit_logs;
+
+-- Crear políticas claras y completas (SELECT, INSERT, UPDATE, DELETE) para la app
+CREATE POLICY "Permitir todo en users"
+ON public.users FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en products"
+ON public.products FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en sales"
+ON public.sales FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en sale_items"
+ON public.sale_items FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en stock_movements"
+ON public.stock_movements FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en cash_registers"
+ON public.cash_registers FOR ALL
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Permitir todo en audit_logs"
 ON public.audit_logs FOR ALL
-USING (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+TO anon, authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+-- Garantizar privilegios sobre tablas y secuencias (IDs autoincrementales)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;

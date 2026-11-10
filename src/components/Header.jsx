@@ -70,7 +70,7 @@ export function Header({ currentUser, onLogout, isOnline = true }) {
                 {currentUser.username}
               </div>
               <div style={{ fontSize: '0.68rem', color: '#93c5fd' }}>
-                Administración
+                {currentUser.role === 'OWNER' ? 'Administración' : 'Ventas e Inventario'}
               </div>
             </div>
 

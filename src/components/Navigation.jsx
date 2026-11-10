@@ -6,8 +6,10 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
-export function Navigation({ activeTab, setActiveTab, lowStockCount }) {
-  const tabs = [
+export function Navigation({ activeTab, setActiveTab, lowStockCount, currentUser }) {
+  const isOwner = currentUser?.role === 'OWNER';
+
+  const allTabs = [
     {
       id: 'pos',
       label: 'Ventas',
@@ -25,15 +27,19 @@ export function Navigation({ activeTab, setActiveTab, lowStockCount }) {
       id: 'dashboard',
       label: 'Cierre de Caja',
       icon: BarChart3,
-      badge: null
+      badge: null,
+      ownerOnly: true
     },
     {
       id: 'audit',
       label: 'Auditoría',
       icon: ShieldCheck,
-      badge: null
+      badge: null,
+      ownerOnly: true
     }
   ];
+
+  const tabs = allTabs.filter(tab => !tab.ownerOnly || isOwner);
 
   return (
     <nav className="nav-bar">
