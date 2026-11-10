@@ -27,6 +27,10 @@ export const authStorage = {
   }
 };
 
+function isOfflineOrDown(err) {
+  return !err?.status || err.status === 404 || err.status === 502 || err.name === 'TypeError';
+}
+
 async function apiRequest(endpoint, options = {}) {
   const token = authStorage.getToken();
   const headers = {
@@ -47,7 +51,9 @@ async function apiRequest(endpoint, options = {}) {
         authStorage.clearAuth();
         window.dispatchEvent(new CustomEvent('auth:expired'));
       }
-      throw new Error(data.error || 'Sesión no autorizada o expirada.');
+      const err = new Error(data.error || 'Sesión no autorizada o expirada.');
+      err.status = response.status;
+      throw err;
     }
   }
 
@@ -72,8 +78,7 @@ export const api = {
       authStorage.setAuth(res.token, res.user);
       return res;
     } catch (err) {
-      // Si el backend no existe (404 / 502 / sin conexión serverless), autenticar directo contra Supabase
-      if (!err.status || err.status === 404 || err.status === 502 || err.status === 500) {
+      if (isOfflineOrDown(err)) {
         console.info('[API] Usando conexión directa a Supabase para login...');
         const res = await directSupabaseApi.login(username, password);
         authStorage.setAuth(res.token, res.user);
@@ -108,8 +113,11 @@ export const api = {
     try {
       return await apiRequest('/products');
     } catch (err) {
-      console.info('[API] Recuperando productos directo de Supabase...');
-      return await directSupabaseApi.getProducts();
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Recuperando productos directo de Supabase...');
+        return await directSupabaseApi.getProducts();
+      }
+      throw err;
     }
   },
 
@@ -120,8 +128,11 @@ export const api = {
         body: JSON.stringify(productData)
       });
     } catch (err) {
-      console.info('[API] Guardando producto directo en Supabase...');
-      return await directSupabaseApi.saveProduct(productData, authStorage.getUser());
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Guardando producto directo en Supabase...');
+        return await directSupabaseApi.saveProduct(productData, authStorage.getUser());
+      }
+      throw err;
     }
   },
 
@@ -132,8 +143,11 @@ export const api = {
         body: JSON.stringify({ branchId, newStock, reason })
       });
     } catch (err) {
-      console.info('[API] Ajustando stock directo en Supabase...');
-      return await directSupabaseApi.adjustStock(productId, branchId, newStock, reason, authStorage.getUser());
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Ajustando stock directo en Supabase...');
+        return await directSupabaseApi.adjustStock(productId, branchId, newStock, reason, authStorage.getUser());
+      }
+      throw err;
     }
   },
 
@@ -145,8 +159,11 @@ export const api = {
         body: JSON.stringify(saleData)
       });
     } catch (err) {
-      console.info('[API] Registrando venta directo en Supabase...');
-      return await directSupabaseApi.createSale(saleData, authStorage.getUser());
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Registrando venta directo en Supabase...');
+        return await directSupabaseApi.createSale(saleData, authStorage.getUser());
+      }
+      throw err;
     }
   },
 
@@ -155,8 +172,11 @@ export const api = {
       const query = new URLSearchParams(filters).toString();
       return await apiRequest(`/sales${query ? `?${query}` : ''}`);
     } catch (err) {
-      console.info('[API] Consultando ventas directo de Supabase...');
-      return await directSupabaseApi.getSales(filters);
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Consultando ventas directo de Supabase...');
+        return await directSupabaseApi.getSales(filters);
+      }
+      throw err;
     }
   },
 
@@ -167,8 +187,11 @@ export const api = {
         body: JSON.stringify({ reason })
       });
     } catch (err) {
-      console.info('[API] Anulando venta directo en Supabase...');
-      return await directSupabaseApi.voidSale(saleId, reason, authStorage.getUser());
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Anulando venta directo en Supabase...');
+        return await directSupabaseApi.voidSale(saleId, reason, authStorage.getUser());
+      }
+      throw err;
     }
   },
 
@@ -209,8 +232,11 @@ export const api = {
       const query = new URLSearchParams(filters).toString();
       return await apiRequest(`/audit-logs${query ? `?${query}` : ''}`);
     } catch (err) {
-      console.info('[API] Consultando auditoría directo de Supabase...');
-      return await directSupabaseApi.getAuditLogs();
+      if (isOfflineOrDown(err)) {
+        console.info('[API] Consultando auditoría directo de Supabase...');
+        return await directSupabaseApi.getAuditLogs();
+      }
+      throw err;
     }
   },
 

@@ -124,7 +124,6 @@ export const directSupabaseApi = {
       });
       return data;
     } else {
-      payload.sku = `PROD-${Date.now().toString(36).toUpperCase()}`;
       payload.is_active = true;
       const { data, error } = await supabase
         .from('products')
